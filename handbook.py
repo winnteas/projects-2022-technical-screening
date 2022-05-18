@@ -21,13 +21,6 @@ import re
 with open("./conditions.json") as f:
     CONDITIONS = json.load(f)
     f.close()
-
-# Returns whether the and/or operands are true
-def check_operand(operand, left, right):
-    if operand == "and":
-        return left and right
-    elif operand == "or":
-        return left or right
     
 # Return the condition with stopwords removed
 def simplify_condition(condition):
@@ -55,16 +48,11 @@ def solve_req(condition, courses_list):
         elif condition == "False":
             return False
         return find_course(courses_list, condition)
-    left_req = 3
-    right_req = 3
     operator = "" 
     for word in condition.split():
         if re.match("[A-Z]{4}[0-9]{4}", word):
             req_met.append(find_course(courses_list, word))
-            if left_req == 3:
-                left_req = req_met[0]
-            elif right_req == 3:
-                right_req = req_met[1]
+
         elif word.lower() == "and" or word.lower() == "or":
             operator = word.lower()
         elif word == "True" or word == "False":
@@ -72,17 +60,13 @@ def solve_req(condition, courses_list):
                 req_met.append(True)
             else:
                 req_met.append(False)
-            if left_req == 3:
-                left_req = req_met[0]
-            elif right_req == 3:
-                right_req = req_met[1]
-        
-        if len(req_met) == 2: 
-            if not check_operand(operator, left_req, right_req):
-                return False
-            left_req = 3
-            right_req = 3
-    
+
+    if len(condition.split()) > 1:
+        operator = condition.split()[1]
+    else:
+        operator = ""
+    print(f"operatorrrr {operator}")
+    print(f"req_met is {req_met}")
     if operator.lower() == "and":
         return all(req_met)
     elif operator.lower() == "or":
@@ -94,6 +78,7 @@ def check_req(condition, courses_list):
     total_uoc = 0
     uoc_pattern2 = re.findall("level \d [A-Z]{4} courses", condition)
     uoc_pattern0 = re.findall("\d+ units of credit in", condition)
+    uoc_pattern3 = re.findall("\d+ units oc credit in", condition)
     uoc_pattern1 = re.findall("\d+ units of credit", condition)
 
     if uoc_pattern2:
@@ -115,6 +100,28 @@ def check_req(condition, courses_list):
                 condition = condition.replace(uoc_pattern0[i], "False")
                 condition = condition.replace(uoc_pattern2[i], "")
             print(f"total uoc is {total_uoc}, after uoc condition {condition}")
+    elif uoc_pattern3:
+        total_uoc = int(uoc_pattern3[0].split()[0])
+        # find bracketed courses
+        uoc_courses = condition.split(uoc_pattern3[0], 2)[1]
+        uoc_courses = re.findall("[A-Z]{4}[0-9]{4}", uoc_courses)
+        if uoc_courses:
+            for c in uoc_courses:
+                if find_course(courses_list, c):
+                    total_uoc -= 6
+        
+        else:
+            # COMP courses
+            uoc_courses = re.findall("COMP[0-9]{4}", str(courses_list))
+            print(f" my courses {uoc_courses}")
+            total_uoc -= len(uoc_courses) * 6
+            print(f" my total uoc {total_uoc}")
+
+        if total_uoc <= 0:
+            condition = condition.split(uoc_pattern3[0], 1)[0] + "True"
+        else:
+            condition = condition.split(uoc_pattern3[0], 1)[0] + "False"
+
             
 
 
@@ -165,8 +172,11 @@ def check_req(condition, courses_list):
                 print(f"final {condition}")
                 # print(f"for brackets {brack} this is {req_met}")
     
-    operator = condition.split()[0]
-    print(f"operator {operator}")
+    # if len(condition.split()) > 1:
+    #     operator = condition.split()[1]
+    # else:
+    #     operator = ""
+    # print(f"operator {operator}")
     return solve_req(condition, courses_list)
 
 
@@ -205,7 +215,9 @@ if __name__ == '__main__':
     assert is_unlocked(["COMP3901", "COMP3333", "COMP3331", "COMP3311", "COMP3131", "COMP3121"], "COMP3902") == True
     assert is_unlocked(["COMP3901", "COMP1151"], "COMP3902") == False
 
-    
+    assert is_unlocked(["COMP1921"], "COMP1531") == True
+
+    # "COMP1531": "COMP1511 or DPST1091 or COMP1917 or COMP1921",
     # "COMP3151": "COMP1927    OR ((COMP1521 or DPST1092) AND COMP2521)",
     # "COMP2121": "COMP1917 OR COMP1921 OR COMP1511 OR DPST1091 OR COMP1521 OR DPST1092 OR (COMP1911 AND MTRN2500)",
     # "COMP9417": "MATH1081 and ((COMP1531 or COMP2041) or (COMP1927 or COMP2521))",
@@ -216,5 +228,16 @@ if __name__ == '__main__':
 
     # "COMP3900": "COMP1531 and (COMP2521 or COMP1927) and 102 units of credit",
     # "COMP3901": "Prerequisite: 12 units of credit in  level 1 COMP courses and 18 units of credit in level 2 COMP courses",
-    # Does that include COMP3901?S
+    # Does that include COMP3901?
+
     # "COMP3902": "Prerequisite: COMP3901 and 12 units of credit in level 3 COMP courses",
+
+    assert is_unlocked(["COMP9417", "COMP9418", "COMP9447"], "COMP9491") == True
+    assert is_unlocked(["COMP6441"], "COMP9302") == False
+    assert is_unlocked(["COMP6441", "COMP64443", "COMP6843", "COMP6445"], "COMP9302") == True
+    assert is_unlocked(["COMP1234", "COMP5634", "COMP4834"], "COMP9491") == False
+    assert is_unlocked(["COMP3901"], "COMP3902") == False
+    assert is_unlocked(["COMP3901", "COMP6441", "COMP6443"], "COMP3902") == False
+    assert is_unlocked(["COMP3901", "COMP3441", "COMP3443"], "COMP3902") == True
+    assert is_unlocked(["COMP1911", "MTRN2500"], "COMP2121") == True
+    assert is_unlocked(["COMP1521"], "COMP2121") == True
