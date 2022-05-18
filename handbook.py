@@ -25,13 +25,14 @@ with open("./conditions.json") as f:
 # Return the condition with stopwords removed
 def simplify_condition(condition):
     # Remove stopwords
-    for word in ("Prerequisite:", "Pre-req:", "Prequisite:", "Pre-requisite:", "Completion of"):
+    for word in ("Prerequisite:", "Pre-req:", "Prequisite:", "Pre-requisite:", "Completion  of"):
         condition = condition.replace(word, "")
     
     # Add COMP to the start of the condition if not there
     if re.match("^\d{4}$", condition):
         condition = "COMP" + condition
-    return condition
+
+    return condition.strip()
 
 def find_course(courses_list, course):
     if course in courses_list:
@@ -39,15 +40,17 @@ def find_course(courses_list, course):
     return False
 
 def solve_req(condition, courses_list):
-    req_met = []
-    print(condition)
+    
+    # for UOC conditions
     if len(condition.split()) == 1:
-        # for UOC conditions
         if condition == "True":
             return True
         elif condition == "False":
             return False
         return find_course(courses_list, condition)
+
+    # List of results to all operands
+    req_met = []
     operator = "" 
     for word in condition.split():
         if re.match("[A-Z]{4}[0-9]{4}", word):
@@ -61,12 +64,11 @@ def solve_req(condition, courses_list):
             else:
                 req_met.append(False)
 
+    # The operator is the second word in the condition, if there is only one word then return the operand result
     if len(condition.split()) > 1:
         operator = condition.split()[1]
     else:
         operator = ""
-    print(f"operatorrrr {operator}")
-    print(f"req_met is {req_met}")
     if operator.lower() == "and":
         return all(req_met)
     elif operator.lower() == "or":
@@ -74,7 +76,7 @@ def solve_req(condition, courses_list):
 
 def check_req(condition, courses_list):
 
-    # Check uoc patterns
+    # Check  if there is uoc involved
     total_uoc = 0
     uoc_pattern2 = re.findall("level \d [A-Z]{4} courses", condition)
     uoc_pattern0 = re.findall("\d+ units of credit in", condition)
@@ -85,7 +87,6 @@ def check_req(condition, courses_list):
         # lists should be the same length
         for i in range(len(uoc_pattern2)):
             total_uoc = int(uoc_pattern1[i].split()[0])
-            print(f"initial uoc {total_uoc}")
             # find courses with the same level and faculty
             level_faculty = uoc_pattern2[i].split()[2] + uoc_pattern2[i].split()[1] 
             for c in courses_list:
@@ -99,53 +100,12 @@ def check_req(condition, courses_list):
             else:
                 condition = condition.replace(uoc_pattern0[i], "False")
                 condition = condition.replace(uoc_pattern2[i], "")
-            print(f"total uoc is {total_uoc}, after uoc condition {condition}")
+
     elif uoc_pattern3:
-        total_uoc = int(uoc_pattern3[0].split()[0])
-        # find bracketed courses
-        uoc_courses = condition.split(uoc_pattern3[0], 2)[1]
-        uoc_courses = re.findall("[A-Z]{4}[0-9]{4}", uoc_courses)
-        if uoc_courses:
-            for c in uoc_courses:
-                if find_course(courses_list, c):
-                    total_uoc -= 6
-        
-        else:
-            # COMP courses
-            uoc_courses = re.findall("COMP[0-9]{4}", str(courses_list))
-            print(f" my courses {uoc_courses}")
-            total_uoc -= len(uoc_courses) * 6
-            print(f" my total uoc {total_uoc}")
-
-        if total_uoc <= 0:
-            condition = condition.split(uoc_pattern3[0], 1)[0] + "True"
-        else:
-            condition = condition.split(uoc_pattern3[0], 1)[0] + "False"
-
-            
-
+        condition = find_uoc_in(uoc_pattern3, courses_list, condition)
 
     elif uoc_pattern0:
-        total_uoc = int(uoc_pattern0[0].split()[0])
-        # find bracketed courses
-        uoc_courses = condition.split(uoc_pattern0[0], 2)[1]
-        uoc_courses = re.findall("[A-Z]{4}[0-9]{4}", uoc_courses)
-        if uoc_courses:
-            for c in uoc_courses:
-                if find_course(courses_list, c):
-                    total_uoc -= 6
-        
-        else:
-            # COMP courses
-            uoc_courses = re.findall("COMP[0-9]{4}", str(courses_list))
-            print(f" my courses {uoc_courses}")
-            total_uoc -= len(uoc_courses) * 6
-            print(f" my total uoc {total_uoc}")
-
-        if total_uoc <= 0:
-            condition = condition.split(uoc_pattern0[0], 1)[0] + "True"
-        else:
-            condition = condition.split(uoc_pattern0[0], 1)[0] + "False"
+        condition = find_uoc_in(uoc_pattern0, courses_list, condition)
 
     elif uoc_pattern1:
         total_uoc = int(uoc_pattern1[0].split()[0])
@@ -154,8 +114,7 @@ def check_req(condition, courses_list):
         else:
             condition = condition.replace(uoc_pattern1[0], "False")
 
-
-
+    # Keep modifying the condition while there are still brackets
     while condition.count("(") != 0:
         counter = 0
         for i, l in enumerate(condition):
@@ -165,19 +124,35 @@ def check_req(condition, courses_list):
                 open_bracket_index = i
                 closed_bracket_index = condition[i:].find(")") + open_bracket_index
                 operand = condition[open_bracket_index + 1:closed_bracket_index]
-                print(f"current operand {operand}")
+                
                 # check the operand 
                 operand = str(solve_req(operand, courses_list))
                 condition = condition.replace(condition[open_bracket_index:closed_bracket_index + 1], operand)
-                print(f"final {condition}")
-                # print(f"for brackets {brack} this is {req_met}")
     
-    # if len(condition.split()) > 1:
-    #     operator = condition.split()[1]
-    # else:
-    #     operator = ""
-    # print(f"operator {operator}")
+
     return solve_req(condition, courses_list)
+
+# For patterns that match "find uoc in", return the modified condition with true/false
+def find_uoc_in(uoc_pattern, courses_list, condition):
+    total_uoc = int(uoc_pattern[0].split()[0])
+    # find bracketed courses
+    uoc_courses = condition.split(uoc_pattern[0], 2)[1]
+    uoc_courses = re.findall("[A-Z]{4}[0-9]{4}", uoc_courses)
+    if uoc_courses:
+        for c in uoc_courses:
+            if find_course(courses_list, c):
+                total_uoc -= 6
+    
+    else:
+        # COMP courses
+        uoc_courses = re.findall("COMP[0-9]{4}", str(courses_list))
+        total_uoc -= len(uoc_courses) * 6
+
+    if total_uoc <= 0:
+        condition = condition.split(uoc_pattern[0], 1)[0] + "True"
+    else:
+        condition = condition.split(uoc_pattern[0], 1)[0] + "False"
+    return condition
 
 
 def is_unlocked(courses_list, target_course):
@@ -189,11 +164,8 @@ def is_unlocked(courses_list, target_course):
 
     You can assume all courses are worth 6 units of credit
     """
-    
-
-
+  
     condition = simplify_condition(CONDITIONS[target_course])
-    print(f"this is my condition {condition}")
     if condition == "":
         return True
     
@@ -225,19 +197,3 @@ if __name__ == '__main__':
     # "COMP9418": "Prerequisite:  MATH5836 or COMP9417",
     # "COMP9302": "(COMP6441 OR COMP6841) AND 12 units of credit in (COMP6443, COMP6843, COMP6445, COMP6845, COMP6447)",
     # "COMP4951": "36 units of credit in COMP courses",
-
-    # "COMP3900": "COMP1531 and (COMP2521 or COMP1927) and 102 units of credit",
-    # "COMP3901": "Prerequisite: 12 units of credit in  level 1 COMP courses and 18 units of credit in level 2 COMP courses",
-    # Does that include COMP3901?
-
-    # "COMP3902": "Prerequisite: COMP3901 and 12 units of credit in level 3 COMP courses",
-
-    assert is_unlocked(["COMP9417", "COMP9418", "COMP9447"], "COMP9491") == True
-    assert is_unlocked(["COMP6441"], "COMP9302") == False
-    assert is_unlocked(["COMP6441", "COMP64443", "COMP6843", "COMP6445"], "COMP9302") == True
-    assert is_unlocked(["COMP1234", "COMP5634", "COMP4834"], "COMP9491") == False
-    assert is_unlocked(["COMP3901"], "COMP3902") == False
-    assert is_unlocked(["COMP3901", "COMP6441", "COMP6443"], "COMP3902") == False
-    assert is_unlocked(["COMP3901", "COMP3441", "COMP3443"], "COMP3902") == True
-    assert is_unlocked(["COMP1911", "MTRN2500"], "COMP2121") == True
-    assert is_unlocked(["COMP1521"], "COMP2121") == True
